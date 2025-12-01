@@ -1,7 +1,6 @@
 const { connectToDatabase } = require('./db');
 
 exports.handler = async (event, context) => {
-  // Set headers for CORS
   const headers = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Headers': 'Content-Type',
@@ -9,7 +8,6 @@ exports.handler = async (event, context) => {
     'Content-Type': 'application/json'
   };
 
-  // Handle preflight requests
   if (event.httpMethod === 'OPTIONS') {
     return { statusCode: 200, headers, body: '' };
   }
@@ -18,7 +16,6 @@ exports.handler = async (event, context) => {
     const { db } = await connectToDatabase();
     const collection = db.collection('expenses');
 
-    // GET - Fetch all expenses
     if (event.httpMethod === 'GET') {
       const expenses = await collection.find({}).sort({ date: -1, _id: -1 }).toArray();
       return {
@@ -28,7 +25,6 @@ exports.handler = async (event, context) => {
       };
     }
 
-    // POST - Add new expense
     if (event.httpMethod === 'POST') {
       const data = JSON.parse(event.body);
       const expense = {
@@ -48,7 +44,6 @@ exports.handler = async (event, context) => {
       };
     }
 
-    // DELETE - Delete expense by id
     if (event.httpMethod === 'DELETE') {
       const { id } = JSON.parse(event.body);
       await collection.deleteOne({ id: id });
@@ -66,7 +61,6 @@ exports.handler = async (event, context) => {
     };
 
   } catch (error) {
-    console.error('Database error:', error);
     return {
       statusCode: 500,
       headers,
@@ -74,4 +68,3 @@ exports.handler = async (event, context) => {
     };
   }
 };
-

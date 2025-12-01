@@ -1,7 +1,6 @@
 const { connectToDatabase } = require('./db');
 
 exports.handler = async (event, context) => {
-  // Set headers for CORS
   const headers = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Headers': 'Content-Type',
@@ -9,7 +8,6 @@ exports.handler = async (event, context) => {
     'Content-Type': 'application/json'
   };
 
-  // Handle preflight requests
   if (event.httpMethod === 'OPTIONS') {
     return { statusCode: 200, headers, body: '' };
   }
@@ -18,11 +16,9 @@ exports.handler = async (event, context) => {
     const { db } = await connectToDatabase();
     const collection = db.collection('settings');
 
-    // GET - Fetch settings
     if (event.httpMethod === 'GET') {
       let settings = await collection.findOne({ _id: 'user_settings' });
       
-      // Return default settings if none exist
       if (!settings) {
         settings = {
           accountBudget: 10000,
@@ -40,7 +36,6 @@ exports.handler = async (event, context) => {
       };
     }
 
-    // POST/PUT - Update settings
     if (event.httpMethod === 'POST' || event.httpMethod === 'PUT') {
       const data = JSON.parse(event.body);
       
@@ -71,7 +66,6 @@ exports.handler = async (event, context) => {
     };
 
   } catch (error) {
-    console.error('Database error:', error);
     return {
       statusCode: 500,
       headers,
@@ -79,4 +73,3 @@ exports.handler = async (event, context) => {
     };
   }
 };
-

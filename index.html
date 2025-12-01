@@ -16,16 +16,72 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <div class="app-container">
+  <!-- Login Screen -->
+  <div class="login-screen" id="loginScreen">
+    <div class="login-container">
+      <div class="login-logo">
+        <span class="login-icon">₹</span>
+        <h1>MoneyTrack</h1>
+        <p class="login-subtitle">Personal Expense Tracker</p>
+      </div>
+      
+      <!-- Login Form -->
+      <div class="login-form" id="loginForm">
+        <h2 id="loginTitle">Enter PIN</h2>
+        <p class="login-hint" id="loginHint">Enter your 4-digit PIN to continue</p>
+        
+        <div class="pin-display">
+          <span class="pin-dot" data-filled="false"></span>
+          <span class="pin-dot" data-filled="false"></span>
+          <span class="pin-dot" data-filled="false"></span>
+          <span class="pin-dot" data-filled="false"></span>
+        </div>
+        
+        <div class="pin-error" id="pinError"></div>
+        
+        <!-- Username input for registration -->
+        <div class="username-input" id="usernameInput" style="display: none;">
+          <label for="username">Your Name</label>
+          <input type="text" id="username" placeholder="Enter your name" maxlength="20">
+        </div>
+        
+        <div class="pin-keypad">
+          <button class="pin-key" onclick="pinDigit('1')">1</button>
+          <button class="pin-key" onclick="pinDigit('2')">2</button>
+          <button class="pin-key" onclick="pinDigit('3')">3</button>
+          <button class="pin-key" onclick="pinDigit('4')">4</button>
+          <button class="pin-key" onclick="pinDigit('5')">5</button>
+          <button class="pin-key" onclick="pinDigit('6')">6</button>
+          <button class="pin-key" onclick="pinDigit('7')">7</button>
+          <button class="pin-key" onclick="pinDigit('8')">8</button>
+          <button class="pin-key" onclick="pinDigit('9')">9</button>
+          <button class="pin-key empty"></button>
+          <button class="pin-key" onclick="pinDigit('0')">0</button>
+          <button class="pin-key" onclick="pinBackspace()">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 4H8l-7 8 7 8h13a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z"/>
+              <line x1="18" y1="9" x2="12" y2="15"/>
+              <line x1="12" y1="9" x2="18" y2="15"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="app-container" id="appContainer" style="display: none;">
     <!-- Header -->
     <header class="app-header">
       <h1 class="logo">₹ <span>MoneyTrack</span></h1>
-      <button class="settings-btn" onclick="openSettings()" aria-label="Settings">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="12" cy="12" r="3"/>
-          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-        </svg>
-      </button>
+      <div class="header-right">
+        <span class="user-greeting" id="userGreeting">Hi, User</span>
+        <button class="settings-btn" onclick="openSettings()" aria-label="Settings">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+          </svg>
+        </button>
+      </div>
     </header>
 
     <!-- Main Content -->
@@ -213,6 +269,7 @@
           <h3>Danger Zone</h3>
           <button class="reset-btn" onclick="resetMonth()">Reset Current Month</button>
           <button class="reset-btn danger" onclick="clearAllData()">Clear All Data</button>
+          <button class="reset-btn logout" onclick="logout()">Logout</button>
         </div>
       </div>
     </div>
@@ -252,4 +309,3 @@
   <script src="app.js"></script>
 </body>
 </html>
-

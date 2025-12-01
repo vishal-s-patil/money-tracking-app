@@ -17,16 +17,12 @@ async function connectToDatabase() {
   const client = new MongoClient(uri);
   await client.connect();
   
-  // Use 'moneytracker' as database name
   const db = client.db('moneytracker');
 
   cachedClient = client;
   cachedDb = db;
 
-  console.log('Connected to MongoDB successfully');
-
   return { client, db };
 }
 
 module.exports = { connectToDatabase };
-

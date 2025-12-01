@@ -1035,5 +1035,224 @@ body {
     transform: translateX(-50%);
     border-radius: var(--radius-lg) var(--radius-lg) 0 0;
   }
+  
+  .login-screen {
+    max-width: 500px;
+    margin: 0 auto;
+  }
+}
+
+/* === Login Screen === */
+.login-screen {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  padding-top: calc(20px + var(--safe-area-top));
+  padding-bottom: calc(20px + var(--safe-area-bottom));
+  background: 
+    radial-gradient(ellipse 80% 50% at 50% 0%, rgba(212, 168, 83, 0.12) 0%, transparent 50%),
+    var(--bg-primary);
+}
+
+.login-container {
+  width: 100%;
+  max-width: 360px;
+  text-align: center;
+}
+
+.login-logo {
+  margin-bottom: 48px;
+}
+
+.login-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 80px;
+  height: 80px;
+  background: linear-gradient(135deg, var(--accent-gold) 0%, var(--accent-gold-dim) 100%);
+  border-radius: 24px;
+  font-size: 40px;
+  font-weight: 600;
+  color: #000;
+  margin-bottom: 20px;
+  box-shadow: 0 8px 32px rgba(212, 168, 83, 0.3);
+}
+
+.login-logo h1 {
+  font-size: 1.75rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+}
+
+.login-subtitle {
+  font-size: 0.9375rem;
+  color: var(--text-secondary);
+}
+
+.login-form h2 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+}
+
+.login-hint {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  margin-bottom: 32px;
+}
+
+/* PIN Display */
+.pin-display {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.pin-dot {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--bg-tertiary);
+  border: 2px solid var(--border-highlight);
+  transition: all 0.2s ease;
+}
+
+.pin-dot[data-filled="true"] {
+  background: var(--accent-gold);
+  border-color: var(--accent-gold);
+  box-shadow: 0 0 12px rgba(212, 168, 83, 0.4);
+}
+
+.pin-error {
+  min-height: 24px;
+  font-size: 0.875rem;
+  color: var(--danger);
+  margin-bottom: 24px;
+}
+
+/* Username Input */
+.username-input {
+  margin-bottom: 24px;
+}
+
+.username-input label {
+  display: block;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+  text-align: left;
+}
+
+.username-input input {
+  width: 100%;
+  padding: 14px 16px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-color);
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 1rem;
+  text-align: center;
+  outline: none;
+  transition: border-color 0.2s ease;
+}
+
+.username-input input:focus {
+  border-color: var(--accent-gold);
+}
+
+.username-input input::placeholder {
+  color: var(--text-muted);
+}
+
+/* PIN Keypad */
+.pin-keypad {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  max-width: 280px;
+  margin: 0 auto;
+}
+
+.pin-key {
+  height: 64px;
+  border-radius: var(--radius-md);
+  border: none;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 1.5rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pin-key:active {
+  transform: scale(0.95);
+  background: var(--bg-tertiary);
+}
+
+.pin-key.empty {
+  background: transparent;
+  cursor: default;
+}
+
+.pin-key.empty:active {
+  transform: none;
+}
+
+.pin-key svg {
+  color: var(--text-secondary);
+}
+
+/* Header Right */
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.user-greeting {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+
+/* Logout Button */
+.reset-btn.logout {
+  border-color: var(--accent-gold-dim);
+  color: var(--accent-gold);
+  margin-top: 10px;
+}
+
+/* Login Animation */
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-10px); }
+  40% { transform: translateX(10px); }
+  60% { transform: translateX(-10px); }
+  80% { transform: translateX(10px); }
+}
+
+.pin-display.shake {
+  animation: shake 0.4s ease;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.login-screen.loading .login-icon {
+  animation: pulse 1.5s ease infinite;
 }
 

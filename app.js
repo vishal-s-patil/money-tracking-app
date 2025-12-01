@@ -12,7 +12,16 @@ let state = {
   expenses: [],
   currentExpenseType: 'account',
   reportMonth: new Date(),
-  isLoading: true
+  isLoading: true,
+  isAuthenticated: false,
+  username: 'User'
+};
+
+// Auth State
+let auth = {
+  pin: '',
+  isRegistering: false,
+  hasExistingUser: false
 };
 
 // Calculator State
@@ -26,33 +35,202 @@ let calc = {
 
 // === Initialization ===
 document.addEventListener('DOMContentLoaded', () => {
-  initApp();
+  checkAuth();
   registerServiceWorker();
 });
 
+function registerServiceWorker() {
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw.js')
+      .catch(err => console.log('SW registration failed:', err));
+  }
+}
+
+// === Authentication ===
+async function checkAuth() {
+  document.getElementById('loginScreen').classList.add('loading');
+  
+  // Check if user has saved token
+  const savedToken = localStorage.getItem('moneytrack_token');
+  
+  if (savedToken) {
+    // Verify token with server
+    try {
+      const response = await fetch(`${API_BASE}/auth`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'verify', token: savedToken })
+      });
+      const data = await response.json();
+      
+      if (data.valid) {
+        state.isAuthenticated = true;
+        state.username = data.username || 'User';
+        showApp();
+        return;
+      }
+    } catch (error) {
+      console.error('Token verification failed:', error);
+    }
+    // Token invalid, remove it
+    localStorage.removeItem('moneytrack_token');
+  }
+  
+  // Check if user exists
+  try {
+    const response = await fetch(`${API_BASE}/auth`);
+    const data = await response.json();
+    
+    auth.hasExistingUser = data.hasPin;
+    
+    if (data.hasPin) {
+      // User exists, show login
+      document.getElementById('loginTitle').textContent = 'Enter PIN';
+      document.getElementById('loginHint').textContent = 'Enter your 4-digit PIN to continue';
+      document.getElementById('usernameInput').style.display = 'none';
+    } else {
+      // New user, show registration
+      auth.isRegistering = true;
+      document.getElementById('loginTitle').textContent = 'Create PIN';
+      document.getElementById('loginHint').textContent = 'Create a 4-digit PIN to secure your data';
+      document.getElementById('usernameInput').style.display = 'block';
+    }
+  } catch (error) {
+    console.error('Auth check failed:', error);
+    document.getElementById('pinError').textContent = 'Connection failed. Try again.';
+  }
+  
+  document.getElementById('loginScreen').classList.remove('loading');
+}
+
+function pinDigit(digit) {
+  if (auth.pin.length >= 4) return;
+  
+  auth.pin += digit;
+  updatePinDisplay();
+  
+  if (auth.pin.length === 4) {
+    setTimeout(() => {
+      if (auth.isRegistering) {
+        registerPin();
+      } else {
+        loginWithPin();
+      }
+    }, 200);
+  }
+}
+
+function pinBackspace() {
+  if (auth.pin.length > 0) {
+    auth.pin = auth.pin.slice(0, -1);
+    updatePinDisplay();
+    document.getElementById('pinError').textContent = '';
+  }
+}
+
+function updatePinDisplay() {
+  const dots = document.querySelectorAll('.pin-dot');
+  dots.forEach((dot, index) => {
+    dot.setAttribute('data-filled', index < auth.pin.length);
+  });
+}
+
+async function registerPin() {
+  const username = document.getElementById('username').value.trim() || 'User';
+  
+  try {
+    const response = await fetch(`${API_BASE}/auth`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'register', pin: auth.pin, username })
+    });
+    
+    const data = await response.json();
+    
+    if (data.success) {
+      // Now login with the new PIN
+      await loginWithPin();
+    } else {
+      showPinError(data.error || 'Registration failed');
+    }
+  } catch (error) {
+    showPinError('Connection failed. Try again.');
+  }
+}
+
+async function loginWithPin() {
+  try {
+    const response = await fetch(`${API_BASE}/auth`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'login', pin: auth.pin })
+    });
+    
+    const data = await response.json();
+    
+    if (data.success) {
+      localStorage.setItem('moneytrack_token', data.token);
+      state.isAuthenticated = true;
+      state.username = data.username || 'User';
+      showApp();
+    } else {
+      showPinError(data.error || 'Invalid PIN');
+    }
+  } catch (error) {
+    showPinError('Connection failed. Try again.');
+  }
+}
+
+function showPinError(message) {
+  auth.pin = '';
+  updatePinDisplay();
+  document.getElementById('pinError').textContent = message;
+  document.querySelector('.pin-display').classList.add('shake');
+  setTimeout(() => {
+    document.querySelector('.pin-display').classList.remove('shake');
+  }, 400);
+}
+
+async function logout() {
+  const token = localStorage.getItem('moneytrack_token');
+  
+  try {
+    await fetch(`${API_BASE}/auth`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'logout', token })
+    });
+  } catch (error) {
+    // Ignore logout errors
+  }
+  
+  localStorage.removeItem('moneytrack_token');
+  state.isAuthenticated = false;
+  auth.pin = '';
+  auth.isRegistering = false;
+  
+  document.getElementById('appContainer').style.display = 'none';
+  document.getElementById('loginScreen').style.display = 'flex';
+  closeSettings();
+  updatePinDisplay();
+  checkAuth();
+}
+
+async function showApp() {
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('appContainer').style.display = 'flex';
+  document.getElementById('userGreeting').textContent = `Hi, ${state.username}`;
+  
+  await initApp();
+}
+
 async function initApp() {
-  showLoading(true);
   try {
     await Promise.all([loadSettings(), loadExpenses()]);
     updateUI();
   } catch (error) {
     console.error('Failed to load data:', error);
-    showToast('Failed to connect to server', 'error');
-  } finally {
-    showLoading(false);
-  }
-}
-
-function showLoading(show) {
-  state.isLoading = show;
-  // Could add a loading spinner UI here
-}
-
-function registerServiceWorker() {
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('sw.js')
-      .then(() => console.log('Service Worker registered'))
-      .catch(err => console.log('SW registration failed:', err));
+    showToast('Failed to load data', 'error');
   }
 }
 
@@ -65,11 +243,10 @@ async function loadSettings() {
     }
   } catch (error) {
     console.error('Failed to load settings:', error);
-    // Use defaults if API fails
   }
 }
 
-async function saveSettings() {
+async function saveSettingsToServer() {
   try {
     const response = await fetch(`${API_BASE}/settings`, {
       method: 'POST',
@@ -218,10 +395,8 @@ function updateBudgetCards() {
   const chunkSpent = getTotalForExpenses(chunkExpenses);
   const chunkRemaining = chunkBudget - chunkSpent;
   
-  // Account Budget Display
   document.getElementById('accountBudgetDisplay').textContent = formatCurrency(state.settings.accountBudget);
   
-  // Chunk Info
   const chunkRemainingEl = document.getElementById('chunkRemaining');
   if (chunkRemaining < 0) {
     chunkRemainingEl.textContent = `-${formatCurrency(Math.abs(chunkRemaining))}`;
@@ -234,13 +409,11 @@ function updateBudgetCards() {
   document.querySelector('.chunk-label').textContent = 
     `Day ${currentChunk.start}-${currentChunk.end}:`;
   
-  // Progress Bar
   const progressPercent = Math.min((chunkSpent / chunkBudget) * 100, 100);
   const progressBar = document.getElementById('accountProgress');
   progressBar.style.width = `${progressPercent}%`;
   progressBar.className = chunkRemaining < 0 ? 'progress-bar overflow' : 'progress-bar';
   
-  // Card Budget
   document.getElementById('cardBudgetDisplay').textContent = formatCurrency(state.settings.cardBudget);
   
   const cardExpenses = getMonthlyExpenses(today, 'card');
@@ -314,7 +487,6 @@ async function submitExpense() {
     type: state.currentExpenseType
   };
   
-  // Show loading state
   const submitBtn = document.querySelector('.submit-expense-btn');
   const originalText = submitBtn.textContent;
   submitBtn.textContent = 'Saving...';
@@ -468,7 +640,7 @@ function closeSettings() {
   document.getElementById('settingsModal').classList.remove('active');
 }
 
-async function saveSettingsHandler() {
+async function saveSettings() {
   const accountBudget = parseFloat(document.getElementById('accountBudgetInput').value) || 0;
   const cardBudget = parseFloat(document.getElementById('cardBudgetInput').value) || 0;
   
@@ -486,7 +658,7 @@ async function saveSettingsHandler() {
   saveBtn.disabled = true;
   
   try {
-    await saveSettings();
+    await saveSettingsToServer();
     updateUI();
     closeSettings();
     showToast('Settings saved', 'success');
@@ -568,7 +740,6 @@ function generateReport() {
   
   let reportHTML = '';
   
-  // Card Budget Summary
   const totalCardSpent = getTotalForExpenses(cardExpenses);
   const cardRemaining = state.settings.cardBudget - totalCardSpent;
   
@@ -590,7 +761,6 @@ function generateReport() {
     </div>
   `;
   
-  // Generate report by chunks
   chunks.forEach((chunk, index) => {
     const chunkBudget = getChunkBudgetForMonth(chunk, date);
     const chunkExpenses = getExpensesForChunk(chunk, date);
@@ -720,13 +890,3 @@ function showToast(message, type = 'info') {
     setTimeout(() => toast.remove(), 300);
   }, 3000);
 }
-
-// Make saveSettings available globally (called from HTML)
-window.saveSettings = saveSettingsHandler;
-
-// === Export for debugging ===
-window.moneyTracker = {
-  state,
-  loadExpenses,
-  loadSettings
-};

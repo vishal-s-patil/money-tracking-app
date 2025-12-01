@@ -1,5 +1,5 @@
 // Service Worker for Money Tracker PWA
-const CACHE_NAME = 'moneytrack-v1';
+const CACHE_NAME = 'moneytrack-v3';
 const urlsToCache = [
   '/',
   '/index.html',
@@ -43,7 +43,17 @@ self.addEventListener('activate', event => {
 });
 
 // Fetch event - serve from cache, fallback to network
+// IMPORTANT: Never cache API calls to Netlify Functions
 self.addEventListener('fetch', event => {
+  const url = new URL(event.request.url);
+  
+  // Skip caching for API calls (Netlify Functions)
+  if (url.pathname.startsWith('/.netlify/functions/')) {
+    console.log('[SW] Skipping cache for API call:', url.pathname);
+    event.respondWith(fetch(event.request));
+    return;
+  }
+  
   event.respondWith(
     caches.match(event.request)
       .then(response => {

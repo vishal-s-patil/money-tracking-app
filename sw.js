@@ -1,5 +1,5 @@
 // Service Worker for Money Tracker PWA
-const CACHE_NAME = 'moneytrack-v3';
+const CACHE_NAME = 'moneytrack-v12';
 const urlsToCache = [
   '/',
   '/index.html',

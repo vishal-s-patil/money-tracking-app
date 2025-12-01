@@ -1,7 +1,7 @@
 const { connectToDatabase } = require('./db');
 const crypto = require('crypto');
 
-// Simple hash function for PIN
+// Hash function for PIN
 function hashPin(pin) {
   return crypto.createHash('sha256').update(pin).digest('hex');
 }
@@ -9,7 +9,7 @@ function hashPin(pin) {
 exports.handler = async (event, context) => {
   const headers = {
     'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
     'Content-Type': 'application/json'
   };
@@ -20,157 +20,198 @@ exports.handler = async (event, context) => {
 
   try {
     const { db } = await connectToDatabase();
-    const collection = db.collection('users');
+    const usersCollection = db.collection('users');
 
-    // GET - Check if user exists (has PIN set)
-    if (event.httpMethod === 'GET') {
-      const user = await collection.findOne({ _id: 'main_user' });
+    if (event.httpMethod !== 'POST') {
       return {
-        statusCode: 200,
+        statusCode: 405,
+        headers,
+        body: JSON.stringify({ error: 'Method not allowed' })
+      };
+    }
+
+    const data = JSON.parse(event.body);
+    const { action, pin, username, token } = data;
+
+    // Register new user
+    if (action === 'register') {
+      if (!pin || pin.length !== 6) {
+        return {
+          statusCode: 400,
+          headers,
+          body: JSON.stringify({ error: 'PIN must be exactly 6 digits' })
+        };
+      }
+
+      if (!username || username.trim().length < 2) {
+        return {
+          statusCode: 400,
+          headers,
+          body: JSON.stringify({ error: 'Username must be at least 2 characters' })
+        };
+      }
+
+      const trimmedUsername = username.trim().toLowerCase();
+      
+      // Check if username already exists
+      const existingUser = await usersCollection.findOne({ 
+        usernameLower: trimmedUsername 
+      });
+      
+      if (existingUser) {
+        return {
+          statusCode: 400,
+          headers,
+          body: JSON.stringify({ error: 'Username already taken' })
+        };
+      }
+
+      const hashedPin = hashPin(pin);
+      const userId = `user_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+      const sessionToken = crypto.randomBytes(32).toString('hex');
+      
+      // Create user with embedded session token
+      await usersCollection.insertOne({
+        _id: userId,
+        username: username.trim(),
+        usernameLower: trimmedUsername,
+        pinHash: hashedPin,
+        sessionToken: sessionToken, // Store token directly in user document
+        createdAt: new Date(),
+        lastLogin: new Date()
+      });
+
+      return {
+        statusCode: 201,
         headers,
         body: JSON.stringify({ 
-          hasPin: !!user,
-          username: user?.username || null
+          success: true, 
+          token: sessionToken,
+          userId: userId,
+          username: username.trim()
         })
       };
     }
 
-    // POST - Register or Login
-    if (event.httpMethod === 'POST') {
-      const data = JSON.parse(event.body);
-      const { action, pin, username } = data;
-
-      // Register new PIN
-      if (action === 'register') {
-        if (!pin || pin.length < 4) {
-          return {
-            statusCode: 400,
-            headers,
-            body: JSON.stringify({ error: 'PIN must be at least 4 digits' })
-          };
-        }
-
-        const existingUser = await collection.findOne({ _id: 'main_user' });
-        if (existingUser) {
-          return {
-            statusCode: 400,
-            headers,
-            body: JSON.stringify({ error: 'User already exists. Use login.' })
-          };
-        }
-
-        const hashedPin = hashPin(pin);
-        await collection.insertOne({
-          _id: 'main_user',
-          username: username || 'User',
-          pinHash: hashedPin,
-          createdAt: new Date()
-        });
-
+    // Login with username and PIN
+    if (action === 'login') {
+      if (!pin || pin.length !== 6) {
         return {
-          statusCode: 201,
+          statusCode: 400,
           headers,
-          body: JSON.stringify({ success: true, message: 'PIN created successfully' })
+          body: JSON.stringify({ error: 'PIN must be 6 digits' })
         };
       }
 
-      // Login with PIN
-      if (action === 'login') {
-        if (!pin) {
-          return {
-            statusCode: 400,
-            headers,
-            body: JSON.stringify({ error: 'PIN is required' })
-          };
-        }
-
-        const user = await collection.findOne({ _id: 'main_user' });
-        if (!user) {
-          return {
-            statusCode: 404,
-            headers,
-            body: JSON.stringify({ error: 'No user found. Please register first.' })
-          };
-        }
-
-        const hashedPin = hashPin(pin);
-        if (hashedPin !== user.pinHash) {
-          return {
-            statusCode: 401,
-            headers,
-            body: JSON.stringify({ error: 'Invalid PIN' })
-          };
-        }
-
-        // Generate simple session token
-        const token = crypto.randomBytes(32).toString('hex');
-        
-        await collection.updateOne(
-          { _id: 'main_user' },
-          { $set: { sessionToken: token, lastLogin: new Date() } }
-        );
-
+      if (!username) {
         return {
-          statusCode: 200,
+          statusCode: 400,
           headers,
-          body: JSON.stringify({ 
-            success: true, 
-            token: token,
-            username: user.username
-          })
+          body: JSON.stringify({ error: 'Username is required' })
         };
       }
 
-      // Verify token
-      if (action === 'verify') {
-        const { token } = data;
-        if (!token) {
-          return {
-            statusCode: 401,
-            headers,
-            body: JSON.stringify({ valid: false })
-          };
-        }
-
-        const user = await collection.findOne({ _id: 'main_user', sessionToken: token });
+      const trimmedUsername = username.trim().toLowerCase();
+      const user = await usersCollection.findOne({ usernameLower: trimmedUsername });
+      
+      if (!user) {
         return {
-          statusCode: 200,
+          statusCode: 401,
           headers,
-          body: JSON.stringify({ 
-            valid: !!user,
-            username: user?.username || null
-          })
+          body: JSON.stringify({ error: 'Invalid username or PIN' })
         };
       }
 
-      // Logout
-      if (action === 'logout') {
-        const { token } = data;
-        await collection.updateOne(
-          { _id: 'main_user' },
-          { $unset: { sessionToken: '' } }
-        );
+      const hashedPin = hashPin(pin);
+      if (hashedPin !== user.pinHash) {
+        return {
+          statusCode: 401,
+          headers,
+          body: JSON.stringify({ error: 'Invalid username or PIN' })
+        };
+      }
+
+      // Generate new session token
+      const sessionToken = crypto.randomBytes(32).toString('hex');
+      
+      // Update user with new session token
+      await usersCollection.updateOne(
+        { _id: user._id },
+        { 
+          $set: { 
+            sessionToken: sessionToken,
+            lastLogin: new Date() 
+          } 
+        }
+      );
+
+      return {
+        statusCode: 200,
+        headers,
+        body: JSON.stringify({ 
+          success: true, 
+          token: sessionToken,
+          userId: user._id,
+          username: user.username
+        })
+      };
+    }
+
+    // Verify token
+    if (action === 'verify') {
+      if (!token) {
         return {
           statusCode: 200,
           headers,
-          body: JSON.stringify({ success: true })
+          body: JSON.stringify({ valid: false })
+        };
+      }
+
+      // Find user by session token
+      const user = await usersCollection.findOne({ sessionToken: token });
+      
+      if (!user) {
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({ valid: false })
         };
       }
 
       return {
-        statusCode: 400,
+        statusCode: 200,
         headers,
-        body: JSON.stringify({ error: 'Invalid action' })
+        body: JSON.stringify({ 
+          valid: true,
+          userId: user._id,
+          username: user.username
+        })
+      };
+    }
+
+    // Logout - clear session token
+    if (action === 'logout') {
+      if (token) {
+        await usersCollection.updateOne(
+          { sessionToken: token },
+          { $unset: { sessionToken: '' } }
+        );
+      }
+      return {
+        statusCode: 200,
+        headers,
+        body: JSON.stringify({ success: true })
       };
     }
 
     return {
-      statusCode: 405,
+      statusCode: 400,
       headers,
-      body: JSON.stringify({ error: 'Method not allowed' })
+      body: JSON.stringify({ error: 'Invalid action' })
     };
 
   } catch (error) {
+    console.error('Auth error:', error);
     return {
       statusCode: 500,
       headers,
@@ -178,4 +219,3 @@ exports.handler = async (event, context) => {
     };
   }
 };
-

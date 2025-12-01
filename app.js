@@ -7,21 +7,16 @@ const API_BASE = '/.netlify/functions';
 let state = {
   settings: {
     accountBudget: 10000,
-    cardBudget: 5000
+    cardBudget: 5000,
+    windowSize: 5 // 5, 10, or 15 days
   },
   expenses: [],
   currentExpenseType: 'account',
   reportMonth: new Date(),
-  isLoading: true,
   isAuthenticated: false,
+  token: null,
+  userId: null,
   username: 'User'
-};
-
-// Auth State
-let auth = {
-  pin: '',
-  isRegistering: false,
-  hasExistingUser: false
 };
 
 // Calculator State
@@ -37,6 +32,14 @@ let calc = {
 document.addEventListener('DOMContentLoaded', () => {
   checkAuth();
   registerServiceWorker();
+  
+  // Enter key handlers for auth forms
+  document.getElementById('loginPin').addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') handleLogin();
+  });
+  document.getElementById('confirmPin').addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') handleRegister();
+  });
 });
 
 function registerServiceWorker() {
@@ -48,13 +51,9 @@ function registerServiceWorker() {
 
 // === Authentication ===
 async function checkAuth() {
-  document.getElementById('loginScreen').classList.add('loading');
-  
-  // Check if user has saved token
   const savedToken = localStorage.getItem('moneytrack_token');
   
   if (savedToken) {
-    // Verify token with server
     try {
       const response = await fetch(`${API_BASE}/auth`, {
         method: 'POST',
@@ -65,6 +64,8 @@ async function checkAuth() {
       
       if (data.valid) {
         state.isAuthenticated = true;
+        state.token = savedToken;
+        state.userId = data.userId;
         state.username = data.username || 'User';
         showApp();
         return;
@@ -72,98 +73,56 @@ async function checkAuth() {
     } catch (error) {
       console.error('Token verification failed:', error);
     }
-    // Token invalid, remove it
     localStorage.removeItem('moneytrack_token');
   }
   
-  // Check if user exists
-  try {
-    const response = await fetch(`${API_BASE}/auth`);
-    const data = await response.json();
-    
-    auth.hasExistingUser = data.hasPin;
-    
-    if (data.hasPin) {
-      // User exists, show login
-      document.getElementById('loginTitle').textContent = 'Enter PIN';
-      document.getElementById('loginHint').textContent = 'Enter your 4-digit PIN to continue';
-      document.getElementById('usernameInput').style.display = 'none';
-    } else {
-      // New user, show registration
-      auth.isRegistering = true;
-      document.getElementById('loginTitle').textContent = 'Create PIN';
-      document.getElementById('loginHint').textContent = 'Create a 4-digit PIN to secure your data';
-      document.getElementById('usernameInput').style.display = 'block';
-    }
-  } catch (error) {
-    console.error('Auth check failed:', error);
-    document.getElementById('pinError').textContent = 'Connection failed. Try again.';
-  }
-  
-  document.getElementById('loginScreen').classList.remove('loading');
+  // Show auth screen
+  document.getElementById('authScreen').style.display = 'flex';
+  document.getElementById('appContainer').style.display = 'none';
 }
 
-function pinDigit(digit) {
-  if (auth.pin.length >= 4) return;
-  
-  auth.pin += digit;
-  updatePinDisplay();
-  
-  if (auth.pin.length === 4) {
-    setTimeout(() => {
-      if (auth.isRegistering) {
-        registerPin();
-      } else {
-        loginWithPin();
-      }
-    }, 200);
-  }
-}
-
-function pinBackspace() {
-  if (auth.pin.length > 0) {
-    auth.pin = auth.pin.slice(0, -1);
-    updatePinDisplay();
-    document.getElementById('pinError').textContent = '';
-  }
-}
-
-function updatePinDisplay() {
-  const dots = document.querySelectorAll('.pin-dot');
-  dots.forEach((dot, index) => {
-    dot.setAttribute('data-filled', index < auth.pin.length);
+function switchAuthTab(tab) {
+  document.querySelectorAll('.auth-tab').forEach(t => {
+    t.classList.remove('active');
+    if (t.dataset.tab === tab) t.classList.add('active');
   });
+  
+  if (tab === 'login') {
+    document.getElementById('loginTab').style.display = 'block';
+    document.getElementById('registerTab').style.display = 'none';
+  } else {
+    document.getElementById('loginTab').style.display = 'none';
+    document.getElementById('registerTab').style.display = 'block';
+  }
+  
+  // Clear errors
+  document.getElementById('loginError').textContent = '';
+  document.getElementById('registerError').textContent = '';
 }
 
-async function registerPin() {
-  const username = document.getElementById('username').value.trim() || 'User';
+async function handleLogin() {
+  const username = document.getElementById('loginUsername').value.trim();
+  const pin = document.getElementById('loginPin').value;
+  
+  if (!username) {
+    document.getElementById('loginError').textContent = 'Please enter your username';
+    return;
+  }
+  
+  if (!pin || pin.length !== 6) {
+    document.getElementById('loginError').textContent = 'PIN must be 6 digits';
+    return;
+  }
+  
+  const btn = document.querySelector('#loginTab .auth-submit-btn');
+  btn.textContent = 'Logging in...';
+  btn.disabled = true;
   
   try {
     const response = await fetch(`${API_BASE}/auth`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'register', pin: auth.pin, username })
-    });
-    
-    const data = await response.json();
-    
-    if (data.success) {
-      // Now login with the new PIN
-      await loginWithPin();
-    } else {
-      showPinError(data.error || 'Registration failed');
-    }
-  } catch (error) {
-    showPinError('Connection failed. Try again.');
-  }
-}
-
-async function loginWithPin() {
-  try {
-    const response = await fetch(`${API_BASE}/auth`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'login', pin: auth.pin })
+      body: JSON.stringify({ action: 'login', username, pin })
     });
     
     const data = await response.json();
@@ -171,34 +130,78 @@ async function loginWithPin() {
     if (data.success) {
       localStorage.setItem('moneytrack_token', data.token);
       state.isAuthenticated = true;
-      state.username = data.username || 'User';
+      state.token = data.token;
+      state.userId = data.userId;
+      state.username = data.username;
       showApp();
     } else {
-      showPinError(data.error || 'Invalid PIN');
+      document.getElementById('loginError').textContent = data.error || 'Login failed';
     }
   } catch (error) {
-    showPinError('Connection failed. Try again.');
+    document.getElementById('loginError').textContent = 'Connection failed. Try again.';
+  } finally {
+    btn.textContent = 'Login';
+    btn.disabled = false;
   }
 }
 
-function showPinError(message) {
-  auth.pin = '';
-  updatePinDisplay();
-  document.getElementById('pinError').textContent = message;
-  document.querySelector('.pin-display').classList.add('shake');
-  setTimeout(() => {
-    document.querySelector('.pin-display').classList.remove('shake');
-  }, 400);
+async function handleRegister() {
+  const username = document.getElementById('registerUsername').value.trim();
+  const pin = document.getElementById('registerPin').value;
+  const confirmPin = document.getElementById('confirmPin').value;
+  
+  if (!username || username.length < 2) {
+    document.getElementById('registerError').textContent = 'Username must be at least 2 characters';
+    return;
+  }
+  
+  if (!pin || pin.length !== 6) {
+    document.getElementById('registerError').textContent = 'PIN must be 6 digits';
+    return;
+  }
+  
+  if (pin !== confirmPin) {
+    document.getElementById('registerError').textContent = 'PINs do not match';
+    return;
+  }
+  
+  const btn = document.querySelector('#registerTab .auth-submit-btn');
+  btn.textContent = 'Creating account...';
+  btn.disabled = true;
+  
+  try {
+    const response = await fetch(`${API_BASE}/auth`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'register', username, pin })
+    });
+    
+    const data = await response.json();
+    
+    if (data.success) {
+      localStorage.setItem('moneytrack_token', data.token);
+      state.isAuthenticated = true;
+      state.token = data.token;
+      state.userId = data.userId;
+      state.username = data.username;
+      showApp();
+    } else {
+      document.getElementById('registerError').textContent = data.error || 'Registration failed';
+    }
+  } catch (error) {
+    document.getElementById('registerError').textContent = 'Connection failed. Try again.';
+  } finally {
+    btn.textContent = 'Create Account';
+    btn.disabled = false;
+  }
 }
 
 async function logout() {
-  const token = localStorage.getItem('moneytrack_token');
-  
   try {
     await fetch(`${API_BASE}/auth`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'logout', token })
+      body: JSON.stringify({ action: 'logout', token: state.token })
     });
   } catch (error) {
     // Ignore logout errors
@@ -206,18 +209,30 @@ async function logout() {
   
   localStorage.removeItem('moneytrack_token');
   state.isAuthenticated = false;
-  auth.pin = '';
-  auth.isRegistering = false;
+  state.token = null;
+  state.userId = null;
+  state.expenses = [];
   
+  // Reset forms
+  document.getElementById('loginUsername').value = '';
+  document.getElementById('loginPin').value = '';
+  document.getElementById('registerUsername').value = '';
+  document.getElementById('registerPin').value = '';
+  document.getElementById('confirmPin').value = '';
+  document.getElementById('loginError').textContent = '';
+  document.getElementById('registerError').textContent = '';
+  
+  // Show auth screen
   document.getElementById('appContainer').style.display = 'none';
-  document.getElementById('loginScreen').style.display = 'flex';
+  document.getElementById('authScreen').style.display = 'flex';
   closeSettings();
-  updatePinDisplay();
-  checkAuth();
+  
+  // Switch to login tab
+  switchAuthTab('login');
 }
 
 async function showApp() {
-  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('authScreen').style.display = 'none';
   document.getElementById('appContainer').style.display = 'flex';
   document.getElementById('userGreeting').textContent = `Hi, ${state.username}`;
   
@@ -226,20 +241,44 @@ async function showApp() {
 
 async function initApp() {
   try {
-    await Promise.all([loadSettings(), loadExpenses()]);
+    await loadSettings();
+    await loadExpenses();
     updateUI();
   } catch (error) {
     console.error('Failed to load data:', error);
-    showToast('Failed to load data', 'error');
+    showToast('Failed to load data. Please try again.', 'error');
   }
 }
 
-// === API Functions ===
+// === API Functions with Auth ===
+function getAuthHeaders() {
+  return {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${state.token}`
+  };
+}
+
 async function loadSettings() {
   try {
-    const response = await fetch(`${API_BASE}/settings`);
+    const response = await fetch(`${API_BASE}/settings`, {
+      headers: getAuthHeaders()
+    });
+    
+    if (response.status === 401) {
+      console.log('Settings: Unauthorized - session invalid');
+      showToast('Session expired. Please login again.', 'error');
+      localStorage.removeItem('moneytrack_token');
+      setTimeout(() => location.reload(), 1500);
+      return;
+    }
+    
     if (response.ok) {
-      state.settings = await response.json();
+      const settings = await response.json();
+      state.settings = {
+        accountBudget: settings.accountBudget || 10000,
+        cardBudget: settings.cardBudget || 5000,
+        windowSize: settings.windowSize || 5
+      };
     }
   } catch (error) {
     console.error('Failed to load settings:', error);
@@ -250,7 +289,7 @@ async function saveSettingsToServer() {
   try {
     const response = await fetch(`${API_BASE}/settings`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAuthHeaders(),
       body: JSON.stringify(state.settings)
     });
     if (!response.ok) throw new Error('Failed to save settings');
@@ -262,9 +301,14 @@ async function saveSettingsToServer() {
 
 async function loadExpenses() {
   try {
-    const response = await fetch(`${API_BASE}/expenses`);
+    const response = await fetch(`${API_BASE}/expenses`, {
+      headers: getAuthHeaders()
+    });
+    
     if (response.ok) {
       state.expenses = await response.json();
+    } else if (response.status === 401) {
+      console.log('Expenses: Unauthorized');
     }
   } catch (error) {
     console.error('Failed to load expenses:', error);
@@ -275,10 +319,23 @@ async function addExpense(expense) {
   try {
     const response = await fetch(`${API_BASE}/expenses`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAuthHeaders(),
       body: JSON.stringify(expense)
     });
-    if (!response.ok) throw new Error('Failed to add expense');
+    
+    if (response.status === 401) {
+      // Session invalid - user needs to re-login
+      showToast('Session invalid. Please login again.', 'error');
+      localStorage.removeItem('moneytrack_token');
+      setTimeout(() => location.reload(), 1500);
+      throw new Error('Session invalid');
+    }
+    
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || 'Failed to add expense');
+    }
+    
     const savedExpense = await response.json();
     state.expenses.push(savedExpense);
     return savedExpense;
@@ -292,7 +349,7 @@ async function clearData(type) {
   try {
     const response = await fetch(`${API_BASE}/clear`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAuthHeaders(),
       body: JSON.stringify({ type })
     });
     if (!response.ok) throw new Error('Failed to clear data');
@@ -313,14 +370,20 @@ function getDaysInMonth(date) {
 
 function getChunks(date) {
   const daysInMonth = getDaysInMonth(date);
-  const chunks = [
-    { start: 1, end: 5 },
-    { start: 6, end: 10 },
-    { start: 11, end: 15 },
-    { start: 16, end: 20 },
-    { start: 21, end: 25 },
-    { start: 26, end: daysInMonth }
-  ];
+  const windowSize = state.settings.windowSize || 5;
+  const chunks = [];
+  
+  let start = 1;
+  while (start <= daysInMonth) {
+    let end = start + windowSize - 1;
+    // Last chunk gets remaining days
+    if (end >= daysInMonth || daysInMonth - end < windowSize) {
+      end = daysInMonth;
+    }
+    chunks.push({ start, end });
+    start = end + 1;
+  }
+  
   return chunks;
 }
 
@@ -387,46 +450,143 @@ function updateUI() {
   updateTodaysList();
 }
 
-function updateBudgetCards() {
-  const today = new Date();
-  const currentChunk = getCurrentChunk();
-  const chunkBudget = getChunkBudget(currentChunk);
-  const chunkExpenses = getExpensesForChunk(currentChunk);
-  const chunkSpent = getTotalForExpenses(chunkExpenses);
-  const chunkRemaining = chunkBudget - chunkSpent;
+function updateDailyLimit() {
+  const dailyLimitValue = document.getElementById('dailyLimitValue');
+  const dailyLimitProgress = document.getElementById('dailyLimitProgress');
+  const dailyLimitStatus = document.getElementById('dailyLimitStatus');
   
-  document.getElementById('accountBudgetDisplay').textContent = formatCurrency(state.settings.accountBudget);
-  
-  const chunkRemainingEl = document.getElementById('chunkRemaining');
-  if (chunkRemaining < 0) {
-    chunkRemainingEl.textContent = `-${formatCurrency(Math.abs(chunkRemaining))}`;
-    chunkRemainingEl.className = 'chunk-remaining overflow';
-  } else {
-    chunkRemainingEl.textContent = formatCurrency(chunkRemaining);
-    chunkRemainingEl.className = 'chunk-remaining';
+  // Check if elements exist
+  if (!dailyLimitValue || !dailyLimitProgress || !dailyLimitStatus) {
+    console.log('Daily limit elements not found');
+    return;
   }
   
-  document.querySelector('.chunk-label').textContent = 
-    `Day ${currentChunk.start}-${currentChunk.end}:`;
+  const today = new Date();
+  const daysInMonth = getDaysInMonth(today);
+  const dailyLimit = state.settings.accountBudget / daysInMonth;
   
-  const progressPercent = Math.min((chunkSpent / chunkBudget) * 100, 100);
-  const progressBar = document.getElementById('accountProgress');
-  progressBar.style.width = `${progressPercent}%`;
-  progressBar.className = chunkRemaining < 0 ? 'progress-bar overflow' : 'progress-bar';
+  const todayStr = today.toISOString().split('T')[0];
+  const todayExpenses = getExpensesForDate(todayStr).filter(e => e.type === 'account');
+  const todaySpent = getTotalForExpenses(todayExpenses);
   
-  document.getElementById('cardBudgetDisplay').textContent = formatCurrency(state.settings.cardBudget);
+  const remaining = dailyLimit - todaySpent;
+  const percentUsed = dailyLimit > 0 ? (todaySpent / dailyLimit) * 100 : 0;
   
-  const cardExpenses = getMonthlyExpenses(today, 'card');
-  const cardSpent = getTotalForExpenses(cardExpenses);
-  document.getElementById('cardSpent').textContent = formatCurrency(cardSpent);
+  // Update display
+  dailyLimitValue.textContent = `${formatCurrency(todaySpent)} / ${formatCurrency(dailyLimit)}`;
   
-  const cardProgressPercent = Math.min((cardSpent / state.settings.cardBudget) * 100, 100);
-  const cardProgressBar = document.getElementById('cardProgress');
-  cardProgressBar.style.width = `${cardProgressPercent}%`;
-  if (cardSpent > state.settings.cardBudget) {
-    cardProgressBar.className = 'progress-bar card-progress overflow';
+  // Update progress bar - dailyLimitProgress IS the bar itself
+  dailyLimitProgress.style.width = `${Math.min(percentUsed, 100)}%`;
+  
+  // Update status and colors
+  if (remaining < 0) {
+    dailyLimitProgress.className = 'progress-bar overflow';
+    dailyLimitStatus.className = 'daily-limit-status overflow';
+    dailyLimitStatus.textContent = `⚠️ Over by ${formatCurrency(Math.abs(remaining))}`;
+  } else if (percentUsed >= 80) {
+    dailyLimitProgress.className = 'progress-bar warning';
+    dailyLimitStatus.className = 'daily-limit-status warning';
+    dailyLimitStatus.textContent = `${formatCurrency(remaining)} remaining`;
   } else {
-    cardProgressBar.className = 'progress-bar card-progress';
+    dailyLimitProgress.className = 'progress-bar';
+    dailyLimitStatus.className = 'daily-limit-status saved';
+    dailyLimitStatus.textContent = `✓ ${formatCurrency(remaining)} remaining`;
+  }
+}
+
+function updateBudgetCards() {
+  try {
+    const today = new Date();
+    const windowSize = state.settings.windowSize || 5;
+    
+    // Monthly totals
+    const monthlyAccountExpenses = getMonthlyExpenses(today, 'account');
+    const monthlySpent = getTotalForExpenses(monthlyAccountExpenses);
+    const monthlyRemaining = state.settings.accountBudget - monthlySpent;
+    
+    const accountBudgetDisplay = document.getElementById('accountBudgetDisplay');
+    const monthlySpentEl = document.getElementById('monthlySpent');
+    const monthlyProgressBar = document.getElementById('monthlyProgress');
+    
+    if (accountBudgetDisplay) {
+      accountBudgetDisplay.textContent = formatCurrency(state.settings.accountBudget);
+    }
+    if (monthlySpentEl) {
+      monthlySpentEl.textContent = formatCurrency(monthlySpent);
+    }
+    
+    // Monthly progress bar
+    if (monthlyProgressBar) {
+      const monthlyProgressPercent = state.settings.accountBudget > 0 
+        ? Math.min((monthlySpent / state.settings.accountBudget) * 100, 100) 
+        : 0;
+      monthlyProgressBar.style.width = `${monthlyProgressPercent}%`;
+      monthlyProgressBar.className = monthlyRemaining < 0 ? 'progress-bar overflow' : 'progress-bar';
+    }
+    
+    // Chunk calculations
+    const currentChunk = getCurrentChunk();
+    const chunkBudget = getChunkBudget(currentChunk);
+    const chunkExpenses = getExpensesForChunk(currentChunk);
+    const chunkSpent = getTotalForExpenses(chunkExpenses);
+    const chunkRemaining = chunkBudget - chunkSpent;
+    
+    const chunkRemainingEl = document.getElementById('chunkRemaining');
+    if (chunkRemainingEl) {
+      if (chunkRemaining < 0) {
+        chunkRemainingEl.textContent = `-${formatCurrency(Math.abs(chunkRemaining))}`;
+        chunkRemainingEl.className = 'chunk-remaining overflow';
+      } else {
+        chunkRemainingEl.textContent = formatCurrency(chunkRemaining);
+        chunkRemainingEl.className = 'chunk-remaining';
+      }
+    }
+    
+    const chunkLabel = document.getElementById('chunkLabel');
+    if (chunkLabel) {
+      chunkLabel.textContent = `Day ${currentChunk.start}-${currentChunk.end} (${windowSize}-day):`;
+    }
+    
+    const progressBar = document.getElementById('accountProgress');
+    if (progressBar) {
+      const progressPercent = chunkBudget > 0 
+        ? Math.min((chunkSpent / chunkBudget) * 100, 100) 
+        : 0;
+      progressBar.style.width = `${progressPercent}%`;
+      progressBar.className = chunkRemaining < 0 ? 'progress-bar overflow' : 'progress-bar';
+    }
+    
+    // Card Budget
+    const cardBudgetDisplay = document.getElementById('cardBudgetDisplay');
+    if (cardBudgetDisplay) {
+      cardBudgetDisplay.textContent = formatCurrency(state.settings.cardBudget);
+    }
+    
+    const cardExpenses = getMonthlyExpenses(today, 'card');
+    const cardSpent = getTotalForExpenses(cardExpenses);
+    
+    const cardSpentEl = document.getElementById('cardSpent');
+    if (cardSpentEl) {
+      cardSpentEl.textContent = formatCurrency(cardSpent);
+    }
+    
+    const cardProgressBar = document.getElementById('cardProgress');
+    if (cardProgressBar) {
+      const cardProgressPercent = state.settings.cardBudget > 0 
+        ? Math.min((cardSpent / state.settings.cardBudget) * 100, 100) 
+        : 0;
+      cardProgressBar.style.width = `${cardProgressPercent}%`;
+      if (cardSpent > state.settings.cardBudget) {
+        cardProgressBar.className = 'progress-bar card-progress overflow';
+      } else {
+        cardProgressBar.className = 'progress-bar card-progress';
+      }
+    }
+    
+    // Update daily limit
+    updateDailyLimit();
+  } catch (error) {
+    console.error('Error updating budget cards:', error);
   }
 }
 
@@ -440,6 +600,10 @@ function updateTodaysList() {
     return;
   }
   
+  const totalToday = getTotalForExpenses(todayExpenses);
+  const accountTotal = getTotalForExpenses(todayExpenses.filter(e => e.type === 'account'));
+  const cardTotal = getTotalForExpenses(todayExpenses.filter(e => e.type === 'card'));
+  
   listEl.innerHTML = todayExpenses.map(expense => `
     <div class="expense-item">
       <div class="expense-info">
@@ -450,7 +614,16 @@ function updateTodaysList() {
         -${formatCurrency(expense.amount)}
       </div>
     </div>
-  `).join('');
+  `).join('') + `
+    <div class="today-total">
+      <div class="today-total-row">
+        <span>Today's Total</span>
+        <span class="today-total-amount">${formatCurrency(totalToday)}</span>
+      </div>
+      ${accountTotal > 0 ? `<div class="today-total-breakdown"><span>Account:</span> <span>${formatCurrency(accountTotal)}</span></div>` : ''}
+      ${cardTotal > 0 ? `<div class="today-total-breakdown"><span>Card:</span> <span>${formatCurrency(cardTotal)}</span></div>` : ''}
+    </div>
+  `;
 }
 
 // === Expense Modal ===
@@ -461,6 +634,12 @@ function openExpenseModal(type) {
   
   resetCalculator();
   document.getElementById('expenseDesc').value = '';
+  
+  // Set date to today by default
+  const today = new Date().toISOString().split('T')[0];
+  const dateInput = document.getElementById('expenseDate');
+  dateInput.value = today;
+  dateInput.max = today; // Don't allow future dates
   
   document.getElementById('expenseModal').classList.add('active');
 }
@@ -477,11 +656,16 @@ async function submitExpense() {
   }
   
   const description = document.getElementById('expenseDesc').value.trim() || 'Fixed expense';
-  const today = new Date().toISOString().split('T')[0];
+  const selectedDate = document.getElementById('expenseDate').value;
+  
+  if (!selectedDate) {
+    showToast('Please select a date', 'error');
+    return;
+  }
   
   const expense = {
     id: Date.now().toString(),
-    date: today,
+    date: selectedDate,
     amount: amount,
     description: description,
     type: state.currentExpenseType
@@ -633,7 +817,26 @@ function updateCalculatorDisplay() {
 function openSettings() {
   document.getElementById('accountBudgetInput').value = state.settings.accountBudget;
   document.getElementById('cardBudgetInput').value = state.settings.cardBudget;
+  
+  // Update window size buttons
+  const windowSize = state.settings.windowSize || 5;
+  document.querySelectorAll('.window-btn').forEach(btn => {
+    btn.classList.remove('active');
+    if (parseInt(btn.dataset.days) === windowSize) {
+      btn.classList.add('active');
+    }
+  });
+  
   document.getElementById('settingsModal').classList.add('active');
+}
+
+function selectWindowSize(days) {
+  document.querySelectorAll('.window-btn').forEach(btn => {
+    btn.classList.remove('active');
+    if (parseInt(btn.dataset.days) === days) {
+      btn.classList.add('active');
+    }
+  });
 }
 
 function closeSettings() {
@@ -644,6 +847,10 @@ async function saveSettings() {
   const accountBudget = parseFloat(document.getElementById('accountBudgetInput').value) || 0;
   const cardBudget = parseFloat(document.getElementById('cardBudgetInput').value) || 0;
   
+  // Get selected window size
+  const activeWindowBtn = document.querySelector('.window-btn.active');
+  const windowSize = activeWindowBtn ? parseInt(activeWindowBtn.dataset.days) : 5;
+  
   if (accountBudget <= 0 || cardBudget <= 0) {
     showToast('Please enter valid budget amounts', 'error');
     return;
@@ -651,6 +858,7 @@ async function saveSettings() {
   
   state.settings.accountBudget = accountBudget;
   state.settings.cardBudget = cardBudget;
+  state.settings.windowSize = windowSize;
   
   const saveBtn = document.querySelector('.save-settings-btn');
   const originalText = saveBtn.textContent;
@@ -761,7 +969,7 @@ function generateReport() {
     </div>
   `;
   
-  chunks.forEach((chunk, index) => {
+  chunks.forEach((chunk) => {
     const chunkBudget = getChunkBudgetForMonth(chunk, date);
     const chunkExpenses = getExpensesForChunk(chunk, date);
     const chunkSpent = getTotalForExpenses(chunkExpenses);
@@ -775,10 +983,11 @@ function generateReport() {
       return;
     }
     
+    const windowSize = state.settings.windowSize || 5;
     reportHTML += `
       <div class="chunk-summary">
         <div class="chunk-summary-header">
-          <span class="chunk-summary-title">📊 5-Day Summary</span>
+          <span class="chunk-summary-title">📊 ${windowSize}-Day Summary</span>
           <span class="chunk-summary-dates">Day ${chunk.start} - ${chunk.end}</span>
         </div>
         <div class="chunk-summary-row">

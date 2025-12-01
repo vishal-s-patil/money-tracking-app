@@ -1,15 +1,20 @@
 const { connectToDatabase } = require('./db');
 
+// Helper to get user from token
+async function getUserFromToken(db, token) {
+  if (!token) return null;
+  const user = await db.collection('users').findOne({ sessionToken: token });
+  return user;
+}
+
 exports.handler = async (event, context) => {
-  // Set headers for CORS
   const headers = {
     'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
     'Content-Type': 'application/json'
   };
 
-  // Handle preflight requests
   if (event.httpMethod === 'OPTIONS') {
     return { statusCode: 200, headers, body: '' };
   }
@@ -24,10 +29,24 @@ exports.handler = async (event, context) => {
 
   try {
     const { db } = await connectToDatabase();
+    
+    // Get token from Authorization header
+    const authHeader = event.headers.authorization || event.headers.Authorization || '';
+    const token = authHeader.replace('Bearer ', '');
+    
+    const user = await getUserFromToken(db, token);
+    if (!user) {
+      return {
+        statusCode: 401,
+        headers,
+        body: JSON.stringify({ error: 'Unauthorized. Please login.' })
+      };
+    }
+
+    const userId = user._id;
     const { type } = JSON.parse(event.body);
 
     if (type === 'month') {
-      // Clear current month's expenses
       const now = new Date();
       const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
       const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
@@ -36,6 +55,7 @@ exports.handler = async (event, context) => {
       const endStr = endOfMonth.toISOString().split('T')[0];
 
       await db.collection('expenses').deleteMany({
+        userId: userId,
         date: { $gte: startStr, $lte: endStr }
       });
 
@@ -47,9 +67,8 @@ exports.handler = async (event, context) => {
     }
 
     if (type === 'all') {
-      // Clear all data
-      await db.collection('expenses').deleteMany({});
-      await db.collection('settings').deleteMany({});
+      await db.collection('expenses').deleteMany({ userId: userId });
+      await db.collection('settings').deleteMany({ userId: userId });
 
       return {
         statusCode: 200,
@@ -65,7 +84,7 @@ exports.handler = async (event, context) => {
     };
 
   } catch (error) {
-    console.error('Database error:', error);
+    console.error('Clear error:', error);
     return {
       statusCode: 500,
       headers,
@@ -73,4 +92,3 @@ exports.handler = async (event, context) => {
     };
   }
 };
-

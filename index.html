@@ -16,55 +16,62 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <!-- Login Screen -->
-  <div class="login-screen" id="loginScreen">
-    <div class="login-container">
-      <div class="login-logo">
-        <span class="login-icon">₹</span>
+  <!-- Auth Screen -->
+  <div class="auth-screen" id="authScreen">
+    <div class="auth-container">
+      <div class="auth-logo">
+        <span class="auth-icon">₹</span>
         <h1>MoneyTrack</h1>
-        <p class="login-subtitle">Personal Expense Tracker</p>
+        <p class="auth-subtitle">Personal Expense Tracker</p>
+      </div>
+      
+      <!-- Auth Tabs -->
+      <div class="auth-tabs">
+        <button class="auth-tab active" data-tab="login" onclick="switchAuthTab('login')">Login</button>
+        <button class="auth-tab" data-tab="register" onclick="switchAuthTab('register')">Create Account</button>
       </div>
       
       <!-- Login Form -->
-      <div class="login-form" id="loginForm">
-        <h2 id="loginTitle">Enter PIN</h2>
-        <p class="login-hint" id="loginHint">Enter your 4-digit PIN to continue</p>
-        
-        <div class="pin-display">
-          <span class="pin-dot" data-filled="false"></span>
-          <span class="pin-dot" data-filled="false"></span>
-          <span class="pin-dot" data-filled="false"></span>
-          <span class="pin-dot" data-filled="false"></span>
+      <div class="auth-form" id="loginTab">
+        <div class="form-group">
+          <label for="loginUsername">Username</label>
+          <input type="text" id="loginUsername" placeholder="Enter your username" autocomplete="username">
         </div>
         
-        <div class="pin-error" id="pinError"></div>
-        
-        <!-- Username input for registration -->
-        <div class="username-input" id="usernameInput" style="display: none;">
-          <label for="username">Your Name</label>
-          <input type="text" id="username" placeholder="Enter your name" maxlength="20">
+        <div class="form-group">
+          <label for="loginPin">PIN (6 digits)</label>
+          <input type="password" id="loginPin" placeholder="••••••" maxlength="6" inputmode="numeric" pattern="[0-9]*" autocomplete="current-password">
         </div>
         
-        <div class="pin-keypad">
-          <button class="pin-key" onclick="pinDigit('1')">1</button>
-          <button class="pin-key" onclick="pinDigit('2')">2</button>
-          <button class="pin-key" onclick="pinDigit('3')">3</button>
-          <button class="pin-key" onclick="pinDigit('4')">4</button>
-          <button class="pin-key" onclick="pinDigit('5')">5</button>
-          <button class="pin-key" onclick="pinDigit('6')">6</button>
-          <button class="pin-key" onclick="pinDigit('7')">7</button>
-          <button class="pin-key" onclick="pinDigit('8')">8</button>
-          <button class="pin-key" onclick="pinDigit('9')">9</button>
-          <button class="pin-key empty"></button>
-          <button class="pin-key" onclick="pinDigit('0')">0</button>
-          <button class="pin-key" onclick="pinBackspace()">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M21 4H8l-7 8 7 8h13a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z"/>
-              <line x1="18" y1="9" x2="12" y2="15"/>
-              <line x1="12" y1="9" x2="18" y2="15"/>
-            </svg>
-          </button>
+        <div class="auth-error" id="loginError"></div>
+        
+        <button class="auth-submit-btn" onclick="handleLogin()">
+          Login
+        </button>
+      </div>
+      
+      <!-- Register Form -->
+      <div class="auth-form" id="registerTab" style="display: none;">
+        <div class="form-group">
+          <label for="registerUsername">Username</label>
+          <input type="text" id="registerUsername" placeholder="Choose a username" autocomplete="username">
         </div>
+        
+        <div class="form-group">
+          <label for="registerPin">Create PIN (6 digits)</label>
+          <input type="password" id="registerPin" placeholder="••••••" maxlength="6" inputmode="numeric" pattern="[0-9]*" autocomplete="new-password">
+        </div>
+        
+        <div class="form-group">
+          <label for="confirmPin">Confirm PIN</label>
+          <input type="password" id="confirmPin" placeholder="••••••" maxlength="6" inputmode="numeric" pattern="[0-9]*" autocomplete="new-password">
+        </div>
+        
+        <div class="auth-error" id="registerError"></div>
+        
+        <button class="auth-submit-btn" onclick="handleRegister()">
+          Create Account
+        </button>
       </div>
     </div>
   </div>
@@ -91,8 +98,19 @@
         <div class="budget-card account-budget">
           <div class="budget-label">Account Budget</div>
           <div class="budget-amount" id="accountBudgetDisplay">₹0</div>
+          
+          <!-- Monthly Progress -->
+          <div class="budget-monthly-info">
+            <span class="monthly-label">Monthly Spent:</span>
+            <span class="monthly-spent" id="monthlySpent">₹0</span>
+          </div>
+          <div class="budget-progress monthly-progress">
+            <div class="progress-bar" id="monthlyProgress"></div>
+          </div>
+          
+          <!-- Chunk Progress -->
           <div class="budget-chunk-info" id="chunkInfo">
-            <span class="chunk-label">Current 5-day chunk:</span>
+            <span class="chunk-label" id="chunkLabel">Current 5-day chunk:</span>
             <span class="chunk-remaining" id="chunkRemaining">₹0</span>
           </div>
           <div class="budget-progress">
@@ -137,6 +155,18 @@
         <div class="today-list" id="todayList">
           <div class="empty-state">No expenses today</div>
         </div>
+      </section>
+      
+      <!-- Daily Limit -->
+      <section class="daily-limit-section">
+        <div class="daily-limit-header">
+          <span class="daily-limit-label">Daily Limit</span>
+          <span class="daily-limit-value" id="dailyLimitValue">₹0 / ₹0</span>
+        </div>
+        <div class="daily-limit-progress">
+          <div class="progress-bar" id="dailyLimitProgress"></div>
+        </div>
+        <div class="daily-limit-status" id="dailyLimitStatus"></div>
       </section>
 
       <!-- View Report Button -->
@@ -219,6 +249,11 @@
           </div>
         </div>
         
+        <div class="date-input">
+          <label for="expenseDate">Date</label>
+          <input type="date" id="expenseDate">
+        </div>
+        
         <div class="description-input">
           <label for="expenseDesc">Description (optional)</label>
           <input type="text" id="expenseDesc" placeholder="Fixed expense">
@@ -258,6 +293,15 @@
           <div class="input-with-prefix">
             <span>₹</span>
             <input type="number" id="cardBudgetInput" placeholder="5000">
+          </div>
+        </div>
+        
+        <div class="setting-group">
+          <label for="windowSizeInput">Budget Window (days)</label>
+          <div class="window-size-options">
+            <button class="window-btn" data-days="5" onclick="selectWindowSize(5)">5 days</button>
+            <button class="window-btn" data-days="10" onclick="selectWindowSize(10)">10 days</button>
+            <button class="window-btn" data-days="15" onclick="selectWindowSize(15)">15 days</button>
           </div>
         </div>
         

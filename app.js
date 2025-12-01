@@ -1,10 +1,7 @@
-// === Money Tracker App ===
+// === Money Tracker App with MongoDB Atlas ===
 
-// Storage Keys
-const STORAGE_KEYS = {
-  SETTINGS: 'moneytrack_settings',
-  EXPENSES: 'moneytrack_expenses'
-};
+// API Base URL (Netlify Functions)
+const API_BASE = '/.netlify/functions';
 
 // App State
 let state = {
@@ -12,9 +9,10 @@ let state = {
     accountBudget: 10000,
     cardBudget: 5000
   },
-  expenses: [], // { id, date, amount, description, type: 'account' | 'card' }
+  expenses: [],
   currentExpenseType: 'account',
-  reportMonth: new Date()
+  reportMonth: new Date(),
+  isLoading: true
 };
 
 // Calculator State
@@ -28,10 +26,27 @@ let calc = {
 
 // === Initialization ===
 document.addEventListener('DOMContentLoaded', () => {
-  loadData();
-  updateUI();
+  initApp();
   registerServiceWorker();
 });
+
+async function initApp() {
+  showLoading(true);
+  try {
+    await Promise.all([loadSettings(), loadExpenses()]);
+    updateUI();
+  } catch (error) {
+    console.error('Failed to load data:', error);
+    showToast('Failed to connect to server', 'error');
+  } finally {
+    showLoading(false);
+  }
+}
+
+function showLoading(show) {
+  state.isLoading = show;
+  // Could add a loading spinner UI here
+}
 
 function registerServiceWorker() {
   if ('serviceWorker' in navigator) {
@@ -41,23 +56,77 @@ function registerServiceWorker() {
   }
 }
 
-// === Data Management ===
-function loadData() {
-  const savedSettings = localStorage.getItem(STORAGE_KEYS.SETTINGS);
-  const savedExpenses = localStorage.getItem(STORAGE_KEYS.EXPENSES);
-  
-  if (savedSettings) {
-    state.settings = JSON.parse(savedSettings);
-  }
-  
-  if (savedExpenses) {
-    state.expenses = JSON.parse(savedExpenses);
+// === API Functions ===
+async function loadSettings() {
+  try {
+    const response = await fetch(`${API_BASE}/settings`);
+    if (response.ok) {
+      state.settings = await response.json();
+    }
+  } catch (error) {
+    console.error('Failed to load settings:', error);
+    // Use defaults if API fails
   }
 }
 
-function saveData() {
-  localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(state.settings));
-  localStorage.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify(state.expenses));
+async function saveSettings() {
+  try {
+    const response = await fetch(`${API_BASE}/settings`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(state.settings)
+    });
+    if (!response.ok) throw new Error('Failed to save settings');
+  } catch (error) {
+    console.error('Failed to save settings:', error);
+    throw error;
+  }
+}
+
+async function loadExpenses() {
+  try {
+    const response = await fetch(`${API_BASE}/expenses`);
+    if (response.ok) {
+      state.expenses = await response.json();
+    }
+  } catch (error) {
+    console.error('Failed to load expenses:', error);
+  }
+}
+
+async function addExpense(expense) {
+  try {
+    const response = await fetch(`${API_BASE}/expenses`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(expense)
+    });
+    if (!response.ok) throw new Error('Failed to add expense');
+    const savedExpense = await response.json();
+    state.expenses.push(savedExpense);
+    return savedExpense;
+  } catch (error) {
+    console.error('Failed to add expense:', error);
+    throw error;
+  }
+}
+
+async function clearData(type) {
+  try {
+    const response = await fetch(`${API_BASE}/clear`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type })
+    });
+    if (!response.ok) throw new Error('Failed to clear data');
+    await loadExpenses();
+    if (type === 'all') {
+      await loadSettings();
+    }
+  } catch (error) {
+    console.error('Failed to clear data:', error);
+    throw error;
+  }
 }
 
 // === Budget Calculations ===
@@ -73,7 +142,7 @@ function getChunks(date) {
     { start: 11, end: 15 },
     { start: 16, end: 20 },
     { start: 21, end: 25 },
-    { start: 26, end: daysInMonth } // Last chunk handles variable month lengths
+    { start: 26, end: daysInMonth }
   ];
   return chunks;
 }
@@ -217,7 +286,6 @@ function openExpenseModal(type) {
   document.getElementById('modalTitle').textContent = 
     type === 'account' ? 'Add Account Expense' : 'Add Card Expense';
   
-  // Reset calculator
   resetCalculator();
   document.getElementById('expenseDesc').value = '';
   
@@ -228,7 +296,7 @@ function closeExpenseModal() {
   document.getElementById('expenseModal').classList.remove('active');
 }
 
-function submitExpense() {
+async function submitExpense() {
   const amount = parseFloat(calc.currentValue);
   if (isNaN(amount) || amount <= 0) {
     showToast('Please enter a valid amount', 'error');
@@ -246,11 +314,23 @@ function submitExpense() {
     type: state.currentExpenseType
   };
   
-  state.expenses.push(expense);
-  saveData();
-  updateUI();
-  closeExpenseModal();
-  showToast('Expense added successfully', 'success');
+  // Show loading state
+  const submitBtn = document.querySelector('.submit-expense-btn');
+  const originalText = submitBtn.textContent;
+  submitBtn.textContent = 'Saving...';
+  submitBtn.disabled = true;
+  
+  try {
+    await addExpense(expense);
+    updateUI();
+    closeExpenseModal();
+    showToast('Expense added successfully', 'success');
+  } catch (error) {
+    showToast('Failed to save expense', 'error');
+  } finally {
+    submitBtn.textContent = originalText;
+    submitBtn.disabled = false;
+  }
 }
 
 // === Calculator Functions ===
@@ -367,7 +447,6 @@ function getOperatorSymbol(operator) {
 function updateCalculatorDisplay() {
   document.getElementById('calcExpression').textContent = calc.expression;
   
-  // Format number with commas
   let displayValue = calc.currentValue;
   if (!isNaN(parseFloat(displayValue))) {
     const parts = displayValue.split('.');
@@ -389,7 +468,7 @@ function closeSettings() {
   document.getElementById('settingsModal').classList.remove('active');
 }
 
-function saveSettings() {
+async function saveSettingsHandler() {
   const accountBudget = parseFloat(document.getElementById('accountBudgetInput').value) || 0;
   const cardBudget = parseFloat(document.getElementById('cardBudgetInput').value) || 0;
   
@@ -400,43 +479,50 @@ function saveSettings() {
   
   state.settings.accountBudget = accountBudget;
   state.settings.cardBudget = cardBudget;
-  saveData();
-  updateUI();
-  closeSettings();
-  showToast('Settings saved', 'success');
+  
+  const saveBtn = document.querySelector('.save-settings-btn');
+  const originalText = saveBtn.textContent;
+  saveBtn.textContent = 'Saving...';
+  saveBtn.disabled = true;
+  
+  try {
+    await saveSettings();
+    updateUI();
+    closeSettings();
+    showToast('Settings saved', 'success');
+  } catch (error) {
+    showToast('Failed to save settings', 'error');
+  } finally {
+    saveBtn.textContent = originalText;
+    saveBtn.disabled = false;
+  }
 }
 
-function resetMonth() {
+async function resetMonth() {
   if (!confirm('Are you sure you want to reset current month expenses?')) return;
   
-  const today = new Date();
-  const year = today.getFullYear();
-  const month = today.getMonth();
-  
-  state.expenses = state.expenses.filter(expense => {
-    const expDate = new Date(expense.date);
-    return !(expDate.getFullYear() === year && expDate.getMonth() === month);
-  });
-  
-  saveData();
-  updateUI();
-  closeSettings();
-  showToast('Month reset successfully', 'success');
+  try {
+    await clearData('month');
+    updateUI();
+    closeSettings();
+    showToast('Month reset successfully', 'success');
+  } catch (error) {
+    showToast('Failed to reset month', 'error');
+  }
 }
 
-function clearAllData() {
+async function clearAllData() {
   if (!confirm('Are you sure you want to clear ALL data? This cannot be undone.')) return;
   
-  state.expenses = [];
-  state.settings = {
-    accountBudget: 10000,
-    cardBudget: 5000
-  };
-  
-  saveData();
-  updateUI();
-  closeSettings();
-  showToast('All data cleared', 'success');
+  try {
+    await clearData('all');
+    state.settings = { accountBudget: 10000, cardBudget: 5000 };
+    updateUI();
+    closeSettings();
+    showToast('All data cleared', 'success');
+  } catch (error) {
+    showToast('Failed to clear data', 'error');
+  }
 }
 
 // === Report ===
@@ -471,9 +557,7 @@ function generateReport() {
   const chunks = getChunks(date);
   const monthExpenses = getMonthlyExpenses(date);
   const cardExpenses = monthExpenses.filter(e => e.type === 'card');
-  const accountExpenses = monthExpenses.filter(e => e.type === 'account');
   
-  // Get all unique dates with expenses
   const expensesByDate = {};
   monthExpenses.forEach(expense => {
     if (!expensesByDate[expense.date]) {
@@ -484,7 +568,7 @@ function generateReport() {
   
   let reportHTML = '';
   
-  // Card Budget Summary at top
+  // Card Budget Summary
   const totalCardSpent = getTotalForExpenses(cardExpenses);
   const cardRemaining = state.settings.cardBudget - totalCardSpent;
   
@@ -513,16 +597,14 @@ function generateReport() {
     const chunkSpent = getTotalForExpenses(chunkExpenses);
     const chunkDiff = chunkBudget - chunkSpent;
     
-    // Only show chunks that have started (for current month) or all (for past months)
     const today = new Date();
     const isCurrentMonth = date.getFullYear() === today.getFullYear() && 
                           date.getMonth() === today.getMonth();
     
     if (isCurrentMonth && today.getDate() < chunk.start) {
-      return; // Skip future chunks
+      return;
     }
     
-    // Chunk summary
     reportHTML += `
       <div class="chunk-summary">
         <div class="chunk-summary-header">
@@ -551,7 +633,6 @@ function generateReport() {
       </div>
     `;
     
-    // Daily breakdown for this chunk
     for (let day = chunk.start; day <= chunk.end; day++) {
       const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
       const dayExpenses = expensesByDate[dateStr];
@@ -580,7 +661,7 @@ function generateReport() {
     }
   });
   
-  if (reportHTML === '') {
+  if (monthExpenses.length === 0) {
     reportHTML = '<div class="empty-state" style="padding: 60px 20px;">No expenses recorded for this month</div>';
   }
   
@@ -622,7 +703,6 @@ function escapeHtml(text) {
 }
 
 function showToast(message, type = 'info') {
-  // Remove existing toast
   const existingToast = document.querySelector('.toast');
   if (existingToast) {
     existingToast.remove();
@@ -633,20 +713,20 @@ function showToast(message, type = 'info') {
   toast.textContent = message;
   document.body.appendChild(toast);
   
-  // Trigger animation
   setTimeout(() => toast.classList.add('show'), 10);
   
-  // Remove after 3 seconds
   setTimeout(() => {
     toast.classList.remove('show');
     setTimeout(() => toast.remove(), 300);
   }, 3000);
 }
 
+// Make saveSettings available globally (called from HTML)
+window.saveSettings = saveSettingsHandler;
+
 // === Export for debugging ===
 window.moneyTracker = {
   state,
-  saveData,
-  loadData
+  loadExpenses,
+  loadSettings
 };
-

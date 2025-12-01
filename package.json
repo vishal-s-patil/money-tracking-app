@@ -1,0 +1,12 @@
+{
+  "name": "money-tracker",
+  "version": "1.0.0",
+  "description": "Personal expense and budget tracking app",
+  "scripts": {
+    "start": "netlify dev"
+  },
+  "dependencies": {
+    "mongodb": "^6.3.0"
+  }
+}
+
